@@ -1,11 +1,22 @@
 
-from flask import Flask, render_template, request, redirect, url_for, flash
+import os
 import sqlite3
+
+from flask import (
+    Flask,
+    render_template,
+    request,
+    redirect,
+    url_for,
+    flash
+)
 
 app = Flask(__name__)
 app.secret_key = "bookstore-demo-key"
 
-DATABASE = "bookstore.db"
+# Always use the database file in the same folder as app.py
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATABASE = os.path.join(BASE_DIR, "bookstore.db")
 
 
 def get_db():
@@ -38,13 +49,17 @@ def init_db():
         )
     """)
 
+    # Insert sample books only when the books table is empty
     count = conn.execute(
         "SELECT COUNT(*) FROM books"
     ).fetchone()[0]
 
     if count == 0:
         conn.executemany(
-            "INSERT INTO books (title, author, price, stock) VALUES (?, ?, ?, ?)",
+            """
+            INSERT INTO books (title, author, price, stock)
+            VALUES (?, ?, ?, ?)
+            """,
             [
                 ("Python Programming", "John Smith", 450, 10),
                 ("Web Development Basics", "Mary Jones", 350, 8),
@@ -59,20 +74,25 @@ def init_db():
 @app.route("/")
 def index():
     conn = get_db()
-    books = conn.execute("SELECT * FROM books ORDER BY id").fetchall()
+
+    books = conn.execute(
+        "SELECT * FROM books ORDER BY id"
+    ).fetchall()
+
     conn.close()
+
     return render_template("index.html", books=books)
 
 
 @app.route("/add", methods=["GET", "POST"])
 def add_book():
     if request.method == "POST":
-        title = request.form["title"].strip()
-        author = request.form["author"].strip()
+        title = request.form.get("title", "").strip()
+        author = request.form.get("author", "").strip()
 
         try:
-            price = float(request.form["price"])
-            stock = int(request.form["stock"])
+            price = float(request.form.get("price", ""))
+            stock = int(request.form.get("stock", ""))
 
             if not title or not author or price < 0 or stock < 0:
                 raise ValueError
@@ -82,14 +102,29 @@ def add_book():
             return redirect(url_for("add_book"))
 
         conn = get_db()
-        conn.execute(
-            "INSERT INTO books (title, author, price, stock) VALUES (?, ?, ?, ?)",
-            (title, author, price, stock)
-        )
-        conn.commit()
-        conn.close()
 
-        flash("Book added successfully!")
+        try:
+            conn.execute(
+                """
+                INSERT INTO books (title, author, price, stock)
+                VALUES (?, ?, ?, ?)
+                """,
+                (title, author, price, stock)
+            )
+
+            conn.commit()
+
+        except sqlite3.Error:
+            conn.rollback()
+            app.logger.exception("Failed to add book")
+            flash("Unable to save the book. Please try again.")
+
+        else:
+            flash("Book added successfully!")
+
+        finally:
+            conn.close()
+
         return redirect(url_for("index"))
 
     return render_template("book_form.html", book=None)
@@ -98,8 +133,10 @@ def add_book():
 @app.route("/edit/<int:book_id>", methods=["GET", "POST"])
 def edit_book(book_id):
     conn = get_db()
+
     book = conn.execute(
-        "SELECT * FROM books WHERE id = ?", (book_id,)
+        "SELECT * FROM books WHERE id = ?",
+        (book_id,)
     ).fetchone()
 
     if book is None:
@@ -108,12 +145,12 @@ def edit_book(book_id):
         return redirect(url_for("index"))
 
     if request.method == "POST":
-        title = request.form["title"].strip()
-        author = request.form["author"].strip()
+        title = request.form.get("title", "").strip()
+        author = request.form.get("author", "").strip()
 
         try:
-            price = float(request.form["price"])
-            stock = int(request.form["stock"])
+            price = float(request.form.get("price", ""))
+            stock = int(request.form.get("stock", ""))
 
             if not title or not author or price < 0 or stock < 0:
                 raise ValueError
@@ -123,19 +160,33 @@ def edit_book(book_id):
             flash("Enter valid book details.")
             return redirect(url_for("edit_book", book_id=book_id))
 
-        conn.execute(
-            """UPDATE books
-               SET title = ?, author = ?, price = ?, stock = ?
-               WHERE id = ?""",
-            (title, author, price, stock, book_id)
-        )
-        conn.commit()
-        conn.close()
+        try:
+            conn.execute(
+                """
+                UPDATE books
+                SET title = ?, author = ?, price = ?, stock = ?
+                WHERE id = ?
+                """,
+                (title, author, price, stock, book_id)
+            )
 
-        flash("Book updated successfully!")
+            conn.commit()
+
+        except sqlite3.Error:
+            conn.rollback()
+            app.logger.exception("Failed to update book")
+            flash("Unable to update the book.")
+
+        else:
+            flash("Book updated successfully!")
+
+        finally:
+            conn.close()
+
         return redirect(url_for("index"))
 
     conn.close()
+
     return render_template("book_form.html", book=book)
 
 
@@ -143,21 +194,35 @@ def edit_book(book_id):
 def delete_book(book_id):
     conn = get_db()
 
-    order = conn.execute(
-        "SELECT id FROM orders WHERE book_id = ? LIMIT 1",
-        (book_id,)
-    ).fetchone()
+    try:
+        order = conn.execute(
+            "SELECT id FROM orders WHERE book_id = ? LIMIT 1",
+            (book_id,)
+        ).fetchone()
 
-    if order:
+        if order:
+            flash("This book has orders and cannot be deleted.")
+        else:
+            result = conn.execute(
+                "DELETE FROM books WHERE id = ?",
+                (book_id,)
+            )
+
+            conn.commit()
+
+            if result.rowcount:
+                flash("Book deleted successfully!")
+            else:
+                flash("Book not found.")
+
+    except sqlite3.Error:
+        conn.rollback()
+        app.logger.exception("Failed to delete book")
+        flash("Unable to delete the book.")
+
+    finally:
         conn.close()
-        flash("This book has orders and cannot be deleted.")
-        return redirect(url_for("index"))
 
-    conn.execute("DELETE FROM books WHERE id = ?", (book_id,))
-    conn.commit()
-    conn.close()
-
-    flash("Book deleted successfully!")
     return redirect(url_for("index"))
 
 
@@ -178,58 +243,77 @@ def orders():
     ).fetchall()
 
     conn.close()
+
     return render_template(
-        "orders.html", orders=all_orders, books=books
+        "orders.html",
+        orders=all_orders,
+        books=books
     )
 
 
 @app.route("/orders/add", methods=["POST"])
 def add_order():
-    customer = request.form["customer"].strip()
+    customer = request.form.get("customer", "").strip()
 
     try:
-        book_id = int(request.form["book_id"])
-        quantity = int(request.form["quantity"])
+        book_id = int(request.form.get("book_id", ""))
+        quantity = int(request.form.get("quantity", ""))
+
         if not customer or quantity <= 0:
             raise ValueError
+
     except ValueError:
         flash("Enter valid customer and order details.")
         return redirect(url_for("orders"))
 
     conn = get_db()
 
-    book = conn.execute(
-        "SELECT * FROM books WHERE id = ?", (book_id,)
-    ).fetchone()
+    try:
+        book = conn.execute(
+            "SELECT * FROM books WHERE id = ?",
+            (book_id,)
+        ).fetchone()
 
-    if book is None or book["stock"] < quantity:
+        if book is None or book["stock"] < quantity:
+            flash("Book unavailable or insufficient stock.")
+            return redirect(url_for("orders"))
+
+        conn.execute(
+            """
+            INSERT INTO orders (customer, book_id, quantity, status)
+            VALUES (?, ?, ?, 'Pending')
+            """,
+            (customer, book_id, quantity)
+        )
+
+        conn.execute(
+            "UPDATE books SET stock = stock - ? WHERE id = ?",
+            (quantity, book_id)
+        )
+
+        conn.commit()
+        flash("Customer order created successfully!")
+
+    except sqlite3.Error:
+        conn.rollback()
+        app.logger.exception("Failed to create order")
+        flash("Unable to create the order.")
+
+    finally:
         conn.close()
-        flash("Book unavailable or insufficient stock.")
-        return redirect(url_for("orders"))
 
-    conn.execute(
-        """INSERT INTO orders (customer, book_id, quantity, status)
-           VALUES (?, ?, ?, 'Pending')""",
-        (customer, book_id, quantity)
-    )
-
-    conn.execute(
-        "UPDATE books SET stock = stock - ? WHERE id = ?",
-        (quantity, book_id)
-    )
-
-    conn.commit()
-    conn.close()
-
-    flash("Customer order created successfully!")
     return redirect(url_for("orders"))
 
 
 @app.route("/orders/update/<int:order_id>", methods=["POST"])
 def update_order(order_id):
-    status = request.form["status"]
+    status = request.form.get("status", "")
+
     allowed_statuses = [
-        "Pending", "Processing", "Shipped", "Completed"
+        "Pending",
+        "Processing",
+        "Shipped",
+        "Completed"
     ]
 
     if status not in allowed_statuses:
@@ -237,18 +321,34 @@ def update_order(order_id):
         return redirect(url_for("orders"))
 
     conn = get_db()
-    conn.execute(
-        "UPDATE orders SET status = ? WHERE id = ?",
-        (status, order_id)
-    )
-    conn.commit()
-    conn.close()
 
-    flash("Order status updated successfully!")
+    try:
+        result = conn.execute(
+            "UPDATE orders SET status = ? WHERE id = ?",
+            (status, order_id)
+        )
+
+        conn.commit()
+
+        if result.rowcount:
+            flash("Order status updated successfully!")
+        else:
+            flash("Order not found.")
+
+    except sqlite3.Error:
+        conn.rollback()
+        app.logger.exception("Failed to update order")
+        flash("Unable to update the order.")
+
+    finally:
+        conn.close()
+
     return redirect(url_for("orders"))
 
 
+# Initialize database tables when the application starts
 init_db()
+
 
 if __name__ == "__main__":
     app.run(debug=True)
