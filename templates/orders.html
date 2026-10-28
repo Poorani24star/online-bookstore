@@ -1,0 +1,107 @@
+
+{% extends "base.html" %}
+
+{% block content %}
+<h2 class="mb-2">Customer Orders</h2>
+<p class="text-muted mb-4">Create and manage customer book orders.</p>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header">
+        <strong>Create a New Order</strong>
+    </div>
+
+    <div class="card-body">
+        <form action="{{ url_for('add_order') }}" method="POST">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label for="customer" class="form-label">Customer Name</label>
+                    <input type="text" class="form-control" id="customer"
+                           name="customer" required>
+                </div>
+
+                <div class="col-md-4">
+                    <label for="book_id" class="form-label">Select Book</label>
+                    <select class="form-select" id="book_id" name="book_id"
+                            required>
+                        <option value="">Choose a book</option>
+                        {% for book in books %}
+                        <option value="{{ book.id }}">
+                            {{ book.title }} — ₹{{ "%.2f"|format(book.price) }}
+                            (Stock: {{ book.stock }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="col-md-2">
+                    <label for="quantity" class="form-label">Quantity</label>
+                    <input type="number" class="form-control" id="quantity"
+                           name="quantity" min="1" value="1" required>
+                </div>
+
+                <div class="col-md-2 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary w-100">
+                        Place Order
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<h4 class="mb-3">Order History</h4>
+
+<div class="table-responsive">
+    <table class="table table-striped table-hover align-middle">
+        <thead class="table-dark">
+            <tr>
+                <th>Order ID</th>
+                <th>Customer</th>
+                <th>Book</th>
+                <th>Quantity</th>
+                <th>Status</th>
+                <th>Update Status</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            {% for order in orders %}
+            <tr>
+                <td>{{ order.id }}</td>
+                <td>{{ order.customer }}</td>
+                <td>{{ order.title }}</td>
+                <td>{{ order.quantity }}</td>
+                <td>
+                    <span class="badge bg-info text-dark">
+                        {{ order.status }}
+                    </span>
+                </td>
+                <td>
+                    <form action="{{ url_for('update_order', order_id=order.id) }}"
+                          method="POST" class="d-flex gap-2">
+                        <select name="status" class="form-select form-select-sm">
+                            {% for status in
+                                ['Pending', 'Processing', 'Shipped', 'Completed'] %}
+                            <option value="{{ status }}"
+                                {% if order.status == status %}selected{% endif %}>
+                                {{ status }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <button type="submit" class="btn btn-sm btn-success">
+                            Update
+                        </button>
+                    </form>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="6" class="text-center">
+                    No orders yet. Create your first order above.
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

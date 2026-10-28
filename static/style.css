@@ -1,0 +1,26 @@
+
+body {
+    background-color: #f5f7fb;
+    font-family: Arial, sans-serif;
+}
+
+.navbar-brand {
+    font-weight: bold;
+}
+
+.card {
+    border: none;
+    border-radius: 10px;
+}
+
+.table {
+    background-color: white;
+}
+
+.btn {
+    border-radius: 6px;
+}
+
+main h2 {
+    font-weight: 700;
+}

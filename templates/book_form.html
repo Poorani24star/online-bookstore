@@ -1,0 +1,49 @@
+
+{% extends "base.html" %}
+
+{% block content %}
+{% if book %}
+    <h2 class="mb-4">Update Book Details</h2>
+{% else %}
+    <h2 class="mb-4">Add a New Book</h2>
+{% endif %}
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <form method="POST">
+            <div class="mb-3">
+                <label for="title" class="form-label">Book Title</label>
+                <input type="text" class="form-control" id="title"
+                       name="title" value="{{ book.title if book else '' }}"
+                       required>
+            </div>
+
+            <div class="mb-3">
+                <label for="author" class="form-label">Author</label>
+                <input type="text" class="form-control" id="author"
+                       name="author" value="{{ book.author if book else '' }}"
+                       required>
+            </div>
+
+            <div class="mb-3">
+                <label for="price" class="form-label">Price (₹)</label>
+                <input type="number" class="form-control" id="price"
+                       name="price" min="0" step="0.01"
+                       value="{{ book.price if book else '' }}" required>
+            </div>
+
+            <div class="mb-3">
+                <label for="stock" class="form-label">Available Stock</label>
+                <input type="number" class="form-control" id="stock"
+                       name="stock" min="0"
+                       value="{{ book.stock if book else '' }}" required>
+            </div>
+
+            <button type="submit" class="btn btn-success">Save Book</button>
+            <a href="{{ url_for('index') }}" class="btn btn-secondary">
+                Cancel
+            </a>
+        </form>
+    </div>
+</div>
+{% endblock %}
